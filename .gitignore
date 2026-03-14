@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+conda/
+
+# macOS
+.DS_Store
+
+# Simulation Data
+data/
+*.npz
+
+# Temporary build outputs
+tmp_cpp_build/
+tmp_cpp_build39/
+
+# Generated analysis text
+figures/*.txt
+
+# Local planning documents
+PROJECT_PROPOSAL.md
+IMPLEMENTATION_ROADMAP.md
+REPO_POLICY.md
