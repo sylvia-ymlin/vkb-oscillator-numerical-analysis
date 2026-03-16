@@ -183,13 +183,6 @@ For modelers working with stiff systems biology models, these findings suggest t
 - **Deterministic scope**: Main bifurcation and reduction conclusions are based on deterministic ODE analysis; stochastic bifurcation structure is not analyzed in this project.
 - **Numerical root-finding caveat**: Near the bifurcation boundary, equilibrium root-finding may report non-physical intermediate solutions; thresholds should be interpreted together with trajectory and basin evidence.
 
-## Reproducibility Metadata
-
-- **Repository snapshot**: latest commit in this repo was initialized on 2026-03-14; analysis rerun date for current figures: 2026-03-15.
-- **Environment used for rerun**: macOS (Apple Silicon), Conda environment `genetic-oscillators`, Python 3.9.25.
-- **Core dependency set**: NumPy, SciPy, Matplotlib, GillesPy2 (see `requirements.txt`).
-- **Reproduction command used**: `python main.py bifurcation`.
-
 ## Quick Start
 
 Recommended Python version: **Python 3.9**
