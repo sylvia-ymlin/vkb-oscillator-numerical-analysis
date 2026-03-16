@@ -2,15 +2,15 @@
 
 ## Introduction
 
-This project reproduces and extends the Vilar-Kueh-Barkai (VKB) genetic oscillator model [1]. The original paper proposed the 9-variable model, demonstrated its noise-resistance mechanisms, and derived a 2-variable QSSA reduction. Our main analysis focuses on deterministic ODE dynamics and examines how extreme timescale separation affects numerical integration and model reduction, which are aspects not explored in the original work.
+This project reproduces and extends the Vilar-Kueh-Barkai (VKB) genetic oscillator model [1]. The original paper proposed the 9-variable model, demonstrated its noise-resistance mechanisms, and derived a 2-variable QSSA reduction. The main analysis focuses on deterministic ODE dynamics and examines how extreme timescale separation affects numerical integration and model reduction, which are aspects not explored in the original work. A central contribution is a bifurcation-distance-based validity criterion for QSSA model reduction.
 
-Timescale separation has two consequences: numerical stiffness that increases integration cost, and the possibility of QSSA model reduction. Dimension reduction can also change phase-space topology near bifurcation boundaries by eliminating attractors and shifting critical thresholds. We quantify these effects through solver benchmarks, eigenvalue analysis, bifurcation comparisons, and basin-of-attraction sampling.
+Timescale separation has two consequences: numerical stiffness that increases integration cost, and the possibility of QSSA model reduction. Dimension reduction can also change phase-space topology near bifurcation boundaries by eliminating attractors and shifting critical thresholds. These effects are quantified through solver benchmarks, eigenvalue analysis, bifurcation comparisons, and basin-of-attraction sampling.
 
 ## Research Questions
 
 **Q1: Numerical Cost**: How expensive is stiff integration, and why?
 
-The system has extreme timescale separation. We benchmark explicit and implicit solvers, then use eigenvalue spectrum analysis to explain the cost difference.
+The system has extreme timescale separation. This project benchmarks explicit and implicit solvers, then uses eigenvalue spectrum analysis to explain the cost difference.
 
 **Q2: Model Reduction**: When does QSSA work, and when does it fail?
 
@@ -21,10 +21,18 @@ Note: This work focuses on deterministic dynamics. SSA is used as a supplementar
 **Parameter Selection**: Three values of $s_R$ (repressor degradation rate) were chosen to probe different regimes:
 
 - $s_R = 0.2$ (baseline): Both ODE and SSA exhibit sustained oscillations.
-- $s_R = 0.088$ (near bifurcation): The parameter region used to test QSSA behavior close to the stability boundary.
+- $s_R = 0.088$ (near-threshold regime): The parameter region used to test QSSA behavior close to the stability boundary.
 - $s_R = 0.03$ (supplementary SSA case): A regime where ODE and SSA trajectories diverge.
 
 ## Methods
+
+## Tech Stack
+
+- **Language**: Python 3.9
+- **Numerical computing**: NumPy, SciPy
+- **Visualization**: Matplotlib
+- **Stochastic simulation**: GillesPy2 (SSA)
+- **Environment management**: Conda
 
 ### VKB Reaction Network
 
@@ -60,7 +68,7 @@ To verify the ODE implementation, stochastic simulation runs were performed usin
 
 ### ODE Model Reduction (QSSA)
 
-We reduce the 9-variable ODE system to a 2-variable manifold ($R$, $C$) by applying the Quasi-Steady-State Assumption (QSSA). The fast variables ($D_A$, $D_R$, $M_A$, $M_R$, $A$) are treated as algebraic constraints rather than differential ones, assuming their derivatives vanish on the slow timescale. This allows us to assess how dimensionality reduction impacts the system's dynamical topology.
+This project reduces the 9-variable ODE system to a 2-variable manifold ($R$, $C$) by applying the Quasi-Steady-State Assumption (QSSA). The fast variables ($D_A$, $D_R$, $M_A$, $M_R$, $A$) are treated as algebraic constraints rather than differential ones, assuming their derivatives vanish on the slow timescale. This formulation allows assessment of how dimensionality reduction impacts the system's dynamical topology.
 
 ## Results
 
@@ -78,7 +86,7 @@ The ODE and SSA implementations reproduce the dynamical behaviors reported in [1
 
 **Solver Benchmark**
 
-We benchmark three solvers at $s_R = 0.2$ to quantify the computational cost of stiffness.
+This project benchmarks three solvers at $s_R = 0.2$ to quantify the computational cost of stiffness.
 
 <div align="center">
 <img src="figures/numerics_summary.png" width="900" alt="Numerics summary">
@@ -88,7 +96,7 @@ We benchmark three solvers at $s_R = 0.2$ to quantify the computational cost of 
 
 **Eigenvalue Analysis**
 
-The Jacobian spectrum along settled trajectories explains the cost difference. We compute eigenvalues at multiple time points along the trajectory to analyze stiffness.
+The Jacobian spectrum along settled trajectories explains the cost difference. Eigenvalues are computed at multiple time points along the trajectory to analyze stiffness.
 
 <div align="center">
 <img src="figures/stiffness_analysis.png" width="900" alt="Stiffness analysis">
@@ -106,7 +114,7 @@ The Jacobian spectrum along settled trajectories explains the cost difference. W
 
 **Trajectory Comparison**
 
-The original paper derived the QSSA reduction and demonstrated agreement at $s_R = 0.2$. We extend this comparison across three parameter regimes to identify where the approximation breaks down.
+The original paper derived the QSSA reduction and demonstrated agreement at $s_R = 0.2$. This project extends this comparison across three parameter regimes to identify where the approximation breaks down.
 
 <div align="center">
 <img src="figures/reduction_comparison.png" width="900" alt="Reduction comparison">
@@ -118,13 +126,13 @@ The reduced model agrees with the full model in the steady-state and oscillatory
 
 **Bifurcation Analysis**
 
-To understand why the models diverge at $s_R = 0.088$, we compute equilibrium stability across a range of $s_R$ values. For each $s_R$ value, we compute the equilibrium point $y^*$ by solving $dy/dt = 0$ and analyze the eigenvalues of the Jacobian at equilibrium. The Hopf bifurcation occurs where $\max \text{Re}(\lambda) = 0$ (stability boundary).
+To understand why the models diverge at $s_R = 0.088$, equilibrium stability is computed across a range of $s_R$ values. For each $s_R$ value, the equilibrium point $y^*$ is computed by solving $dy/dt = 0$, and the eigenvalues of the Jacobian at equilibrium are then analyzed. The Hopf bifurcation occurs where $\max \text{Re}(\lambda) = 0$ (stability boundary).
 
-**Attractor Coexistence at $s_R = 0.088$**
+**Attractor Coexistence at $s_R = 0.088$ (Near-Threshold Regime)**
 
-Both models have locally stable equilibria ($\max \text{Re}(\lambda) < 0$) at this parameter value, yet exhibit topological divergence due to attractor loss in the reduced model. To verify this, we sample 72 initial conditions around the equilibrium using random and axis-aligned perturbations. The trajectories were integrated until $t = 800$, significantly longer than the slowest relaxation timescale ($\tau \approx 28$). The results show that 39 trajectories converge to a limit cycle and 33 converge to the equilibrium.
+Both models have locally stable equilibria ($\max \text{Re}(\lambda) < 0$) at this parameter value, yet exhibit topological divergence due to attractor loss in the reduced model. To verify this, 72 initial conditions are sampled around the equilibrium using random and axis-aligned perturbations. The trajectories were integrated until $t = 800$, significantly longer than the slowest relaxation timescale ($\tau \approx 28$). The results show that 39 trajectories converge to a limit cycle and 33 converge to the equilibrium.
 
-In contrast, a phase space scan of the reduced model (625 initial conditions uniformly sampled in $(R, C) \in [0, 200] \times [0, 200]$) shows that all trajectories converge to equilibrium.
+In contrast, a phase space scan of the reduced model (625 initial conditions uniformly sampled in $(R, C) \in [0, 200] \times [0, 200]$) shows that all sampled trajectories converge to equilibrium within the scanned domain and integration horizon.
 
 <div align="center">
 <img src="figures/basin_comparison_sR_0.088.png" width="900" alt="Basin comparison">
@@ -150,9 +158,9 @@ The eigenvalue spectra at equilibrium (Figure 7) and shifted bifurcation boundar
 
 The bifurcation analysis shows that the full model crosses the stability boundary at $s_{R,\text{Hopf}} \approx 0.096$, while the reduced model crosses at $s_{R,\text{Hopf}} \approx 0.117$, corresponding to a 22% shift. This shift is consistent with the reduced system's altered local linearization, which changes the parameter value at which the dominant eigenvalue pair crosses $\mathrm{Re}(\lambda)=0$. This mechanism explains why at $s_R = 0.088$, the full model exhibits bistability (coexistence of equilibrium and limit-cycle attractors) while the reduced model has only a single equilibrium attractor.
 
-**QSSA Validity: Distance from Bifurcation**
+**QSSA Validity: A Bifurcation-Distance Criterion**
 
-QSSA failure correlates with proximity to bifurcation. The approximation remains accurate far from thresholds ($s_R = 0.03$, 69% distance), breaks down near the boundary ($s_R = 0.088$, 8% distance), and recovers qualitatively in the oscillatory regime ($s_R = 0.2$, 108% distance). This suggests QSSA becomes unreliable within ~10% of bifurcation thresholds, leading to qualitative changes in the phase space topology.
+This project defines a *bifurcation-distance criterion* for QSSA validity based on the relative distance to the nearest Hopf bifurcation threshold: $d_\text{bif} = \min\left(|s_R - s_{R,\text{Hopf}}|\, /\, s_{R,\text{Hopf}}\right)$. The approximation remains accurate at $s_R = 0.03$ ($d_\text{bif} = 69\%$), fails in the near-threshold regime ($s_R = 0.088$, $d_\text{bif} = 8\%$), and recovers qualitatively in the oscillatory regime ($s_R = 0.2$, $d_\text{bif} = 108\%$). The observed failure at $d_\text{bif} \lesssim 10\%$ provides a practical bound for when QSSA may produce qualitative changes in phase-space topology.
 
 <div align="center">
 <img src="figures/qssa_validity_criterion.png" width="800" alt="QSSA validity criterion">
@@ -166,7 +174,21 @@ For modelers working with stiff systems biology models, these findings suggest t
 
 1. **Solver selection**: Implicit methods (BDF, Radau) are generally more efficient when timescale separation exceeds ~10³. The 26× cost difference observed here is substantial for parameter sweeps and uncertainty quantification.
 
-2. **Model reduction validation**: QSSA benefits from bifurcation-distance validation in addition to timescale-separation checks. The 22% threshold shift and attractor elimination at $s_R = 0.088$ indicate that reduced models can miss qualitatively different behaviors even when timescale separation remains large. A practical criterion is to use QSSA with caution within ~10% of known bifurcation boundaries.
+2. **Model reduction validation**: QSSA benefits from bifurcation-distance validation in addition to timescale-separation checks. The 22% threshold shift and attractor elimination in the near-threshold regime ($s_R = 0.088$) indicate that reduced models can miss qualitatively different behaviors even when timescale separation remains large. The bifurcation-distance criterion ($d_\text{bif} \lesssim 10\%$) provides a practical bound for QSSA reliability.
+
+## Limitations
+
+- **Empirical validity bound**: The $d_\text{bif} \lesssim 10\%$ boundary is an empirical guideline from the tested parameter regimes, not a formal theorem.
+- **Finite-domain basin conclusions**: Basin conclusions are based on finite initial-condition sampling (625 reduced-model grid points and 72 full-model probes) and finite integration horizons.
+- **Deterministic scope**: Main bifurcation and reduction conclusions are based on deterministic ODE analysis; stochastic bifurcation structure is not analyzed in this project.
+- **Numerical root-finding caveat**: Near the bifurcation boundary, equilibrium root-finding may report non-physical intermediate solutions; thresholds should be interpreted together with trajectory and basin evidence.
+
+## Reproducibility Metadata
+
+- **Repository snapshot**: latest commit in this repo was initialized on 2026-03-14; analysis rerun date for current figures: 2026-03-15.
+- **Environment used for rerun**: macOS (Apple Silicon), Conda environment `genetic-oscillators`, Python 3.9.25.
+- **Core dependency set**: NumPy, SciPy, Matplotlib, GillesPy2 (see `requirements.txt`).
+- **Reproduction command used**: `python main.py bifurcation`.
 
 ## Quick Start
 
