@@ -70,7 +70,7 @@ def plot_bifurcation_diagram(s_R_range=(0.05, 0.15), n_points=30):
         # Mark the three test points
         test_points = [
             (0.03, 'Steady State', bifurc_colors['test_steady']),
-            (0.088, 'Subcritical Bistable', bifurc_colors['test_bistable']),
+            (0.088, 'Near-threshold', bifurc_colors['test_bistable']),
             (0.2, 'Oscillatory', bifurc_colors['test_oscillatory']),
         ]
         

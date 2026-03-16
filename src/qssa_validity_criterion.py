@@ -12,18 +12,18 @@ from .config import PLOT_CONFIG, RC_PARAMS, DEFAULT_PARAMS
 from .bifurcation_analysis import find_hopf_bifurcation_threshold
 
 
-def assess_qssa_validity(s_R, s_R_full_hopf, s_R_reduced_hopf, threshold_margin=0.2):
+def assess_qssa_validity(s_R, s_R_full_hopf, s_R_reduced_hopf, threshold_margin=0.1):
     """
     Assess QSSA validity at a given s_R value based on proximity to bifurcations.
     
     Criterion: QSSA should be used with caution when within threshold_margin
-    (default 20%) of either Hopf bifurcation threshold.
+    (default 10%) of either Hopf bifurcation threshold.
     
     Parameters:
         s_R: parameter value to assess
         s_R_full_hopf: full model Hopf threshold
         s_R_reduced_hopf: reduced model Hopf threshold
-        threshold_margin: relative distance threshold (0.2 = 20%)
+        threshold_margin: relative distance threshold (0.1 = 10%)
     
     Returns:
         dict with keys:
@@ -85,7 +85,7 @@ def plot_qssa_validity_regions():
     min_distances = []
     
     for s_R in s_R_values:
-        result = assess_qssa_validity(s_R, s_R_full, s_R_reduced, threshold_margin=0.2)
+        result = assess_qssa_validity(s_R, s_R_full, s_R_reduced, threshold_margin=0.1)
         validity.append(result['valid'])
         min_distances.append(result['min_distance'])
     
@@ -114,11 +114,11 @@ def plot_qssa_validity_regions():
         ax1.axvline(s_R_reduced, color=reduced_color, linestyle='--', linewidth=2,
                    label=f'Reduced Model Hopf: {s_R_reduced:.3f}')
         
-        # Mark 20% margins
-        margin_full_low = s_R_full * 0.8
-        margin_full_high = s_R_full * 1.2
-        margin_reduced_low = s_R_reduced * 0.8
-        margin_reduced_high = s_R_reduced * 1.2
+        # Mark 10% margins
+        margin_full_low = s_R_full * 0.9
+        margin_full_high = s_R_full * 1.1
+        margin_reduced_low = s_R_reduced * 0.9
+        margin_reduced_high = s_R_reduced * 1.1
         
         ax1.axvline(margin_full_low, color=full_color, linestyle=':', linewidth=1, alpha=0.5)
         ax1.axvline(margin_full_high, color=full_color, linestyle=':', linewidth=1, alpha=0.5)
@@ -129,7 +129,7 @@ def plot_qssa_validity_regions():
         bifurc_colors = PLOT_CONFIG['BIFURCATION_COLORS']
         test_points = [
             (0.03,  'Steady',     bifurc_colors['test_steady']),
-            (0.088, 'Bistable',   bifurc_colors['test_bistable']),
+            (0.088, 'Near-threshold', bifurc_colors['test_bistable']),
             (0.2,   'Oscillatory', bifurc_colors['test_oscillatory']),
         ]
         neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
@@ -157,10 +157,10 @@ def plot_qssa_validity_regions():
         
         # Panel 2: Distance metric
         ax2.plot(s_R_values, min_distances, 'k-', linewidth=2, label='Min relative distance')
-        ax2.axhline(0.2, color=invalid_color, linestyle='--', linewidth=2, alpha=0.7,
-                   label='20% threshold')
-        ax2.fill_between(s_R_values, 0, 0.2, alpha=0.2, color=invalid_color)
-        ax2.fill_between(s_R_values, 0.2, 1, alpha=0.2, color=valid_color)
+        ax2.axhline(0.1, color=invalid_color, linestyle='--', linewidth=2, alpha=0.7,
+               label='10% threshold')
+        ax2.fill_between(s_R_values, 0, 0.1, alpha=0.2, color=invalid_color)
+        ax2.fill_between(s_R_values, 0.1, 1, alpha=0.2, color=valid_color)
         
         # Mark test points (same colors as ax1)
         neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
