@@ -7,7 +7,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.patches import Patch
 from scipy.integrate import solve_ivp
 from src.config import DEFAULT_PARAMS, BIOLOGICAL_INITIAL_CONDITION, ODE_TOLERANCES_LOOSE, ODE_TOLERANCES, PLOT_CONFIG, RC_PARAMS, SPECIES
-from src.models import vkb_ode, reduced_vkb_ode
+from src.models import vkb_ode, reduced_vkb_ode, activator_quasi_steady_state, mr_quasi_steady_state
 from src.simulate import run_ode_simulation, run_reduced_simulation
 from src.analyze_bifurcation import find_full_equilibrium, find_reduced_equilibrium
 
@@ -248,13 +248,10 @@ def run_combined_basin_analysis(s_R=0.088, n_grid=25, n_random=16, output_dir='f
     _log(f"  → {n_lc} converge to limit cycle")
     _log(f"  → {n_eq} converge to equilibrium")
     _log()
-    _log("CONCLUSION: QSSA eliminates the limit cycle attractor,")
-    _log("            fundamentally altering the phase space topology.")
-    _log("=" * 70)
     _log()
 
-    _log("Phase 3: Creating 2×2 comparison figure...")
-    plot_basin_comparison(basin_data, probe_data, output_dir=output_dir)
+    _log("Phase 3: Creating paper-style phase portrait (Figure 9)...")
+    plot_paper_mechanism(probe_data, s_R=s_R, output_dir=output_dir)
 
     return {
         'basin_data': basin_data,
@@ -262,195 +259,180 @@ def run_combined_basin_analysis(s_R=0.088, n_grid=25, n_random=16, output_dir='f
     }
 
 
-# Backward-compatibility aliases used by main.py
+def plot_paper_mechanism(probe_data, s_R=0.088, output_dir='figures'):
+    """
+    Paper-style phase portrait in the style of Vilar et al. (2002) Figs 4 and 6.
 
-def run_basin_analysis_for_critical_point(s_R=0.088, n_grid=25, output_dir='figures'):
-    """Alias for run_combined_basin_analysis."""
-    return run_combined_basin_analysis(s_R=s_R, n_grid=n_grid, output_dir=output_dir)
+    Left panel  – Reduced model: nullclines + convergent trajectories (stable equilibrium).
+    Right panel – Full model:    nullclines + closed limit-cycle orbit (unstable equilibrium).
 
-
-def run_full_model_attractor_probe(s_R=0.088, n_random=16, output_dir='figures'):
-    """Wrapper that runs only the full model attractor probe."""
-    return probe_full_model_attractor(s_R=s_R, n_random=n_random)
-
-
-
-
-
-
-def plot_basin_comparison(basin_data, probe_data, output_dir='figures'):
-    s_R = basin_data['s_R']
-
-    y_star_reduced = find_reduced_equilibrium(s_R)
-    y_star_full = find_full_equilibrium(s_R)
-
-    R_idx = SPECIES.index('R')
-    C_idx = SPECIES.index('C')
-
-    fate_colors = PLOT_CONFIG['FATE_COLORS']
-    neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
-
-    ICs = np.array(probe_data['initial_conditions'])
-    fates = probe_data['fates']
-    labels = probe_data['labels']
-    trajectories = probe_data['trajectories']
-
-    color_map = {
-        'equilibrium': fate_colors['equilibrium'],
-        'limit_cycle': fate_colors['limit_cycle'],
-        'failed': fate_colors['failed'],
-        'error': fate_colors['failed'],
-    }
-
-    bio_idx = labels.index('biological_IC')
-    traj_bio = trajectories[bio_idx]
-    R_bio = traj_bio['R'] if traj_bio is not None else None
-    C_bio = traj_bio['C'] if traj_bio is not None else None
-
-    lc_indices = [i for i, f in enumerate(fates) if f == 'limit_cycle']
-    eq_indices = [i for i, f in enumerate(fates) if f == 'equilibrium']
-
-    def _sample_diverse_indices(idxs, n_show=6):
-        if len(idxs) <= n_show:
-            return idxs
-        rc = np.array([[ICs[i, R_idx], ICs[i, C_idx]] for i in idxs], dtype=float)
-        center = rc.mean(axis=0)
-        first = int(np.argmax(np.sum((rc - center) ** 2, axis=1)))
-        selected_local = [first]
-        remaining = set(range(len(idxs))) - {first}
-        while len(selected_local) < n_show and remaining:
-            rem_list = sorted(remaining)
-            d2_list = [min(np.sum((rc[r] - rc[s]) ** 2) for s in selected_local) for r in rem_list]
-            best = rem_list[int(np.argmax(d2_list))]
-            selected_local.append(best)
-            remaining.remove(best)
-        return [idxs[k] for k in selected_local]
-
-    sampled_eq = _sample_diverse_indices(eq_indices, n_show=6)
-    sampled_lc = _sample_diverse_indices(lc_indices, n_show=6)
-
-    lc_tail_R = lc_tail_C = None
-    if lc_indices:
-        lc_rep_idx = bio_idx if fates[bio_idx] == 'limit_cycle' else lc_indices[0]
-        traj_lc = trajectories[lc_rep_idx]
-        n_tail = len(traj_lc['t']) // 5
-        lc_tail_R = traj_lc['R'][-n_tail:]
-        lc_tail_C = traj_lc['C'][-n_tail:]
-
-    R_focus = C_focus = None
-    if R_bio is not None:
-        r_focus_max = np.percentile(ICs[:, R_idx], 95) + 40
-        c_focus_max = np.percentile(ICs[:, C_idx], 95) + 80
-        focus_mask = (R_bio <= r_focus_max) & (C_bio <= c_focus_max)
-        if np.any(focus_mask):
-            R_focus = R_bio[focus_mask]
-            C_focus = C_bio[focus_mask]
-        else:
-            n_focus = max(20, len(R_bio) // 3)
-            R_focus = R_bio[-n_focus:]
-            C_focus = C_bio[-n_focus:]
-
+    Both share the same axes so the structural difference is immediately apparent.
+    """
     params = {**DEFAULT_PARAMS, 's_R': s_R}
+    R_idx = SPECIES.index('R')
+    C_full_idx = 8  # index of C in the 9-D state vector
 
-    def _vector_field(R_lim, C_lim, n=30):
-        Rv = np.linspace(*R_lim, n)
-        Cv = np.linspace(*C_lim, n)
-        Rg, Cg = np.meshgrid(Rv, Cv)
-        dR = np.zeros_like(Rg)
-        dC = np.zeros_like(Cg)
-        for i in range(n):
-            for j in range(n):
-                dy = reduced_vkb_ode(0, [Rg[i, j], Cg[i, j]], params)
-                dR[i, j] = dy[0]
-                dC[i, j] = dy[1]
-        return Rg, Cg, dR, dC
+    # ── equilibria ────────────────────────────────────────────────────────────
+    y_star_red  = find_reduced_equilibrium(s_R)
+    y_star_full = find_full_equilibrium(s_R)
+    R0_red, C0_red   = float(y_star_red[0]),        float(y_star_red[1])
+    R0_full, C0_full = float(y_star_full[R_idx]),   float(y_star_full[C_full_idx])
 
-    Rg_wide, Cg_wide, dRw, dCw = _vector_field((0, 2500), (0, 2500))
-    Rg_zoom, Cg_zoom, dRz, dCz = _vector_field((0, 200), (0, 500))
+    # ── nullclines (closed-form for the 2-D reduced system) ──────────────────
+    R_arr = np.linspace(0.01, 3000.0, 3000)
+    C_nc  = np.zeros_like(R_arr)   # Ċ = 0  →  C = r_C·Ã(R)·R / s_A
+    R_nc  = np.zeros_like(R_arr)   # Ṙ = 0  →  C = (r_C·Ã·R + s_R·R − b_R·M̃_R) / s_A
 
-    with plt.rc_context(RC_PARAMS):
-        fig, axes = plt.subplots(2, 2, figsize=(18, 14), gridspec_kw={'hspace': 0.38, 'wspace': 0.28})
+    for k, Rv in enumerate(R_arr):
+        Aq  = activator_quasi_steady_state(Rv, params)
+        MRq = mr_quasi_steady_state(Aq, params)
+        C_nc[k] = params['r_C'] * Aq * Rv / params['s_A']
+        R_nc[k] = (params['r_C'] * Aq * Rv + params['s_R'] * Rv - params['b_R'] * MRq) / params['s_A']
 
-        fig.text(0.005, 0.74, 'Overview', va='center', ha='left', rotation=90, fontsize=10, color='#555555', style='italic')
-        fig.text(0.005, 0.27, 'Zoomed', va='center', ha='left', rotation=90, fontsize=10, color='#555555', style='italic')
+    # ── limit cycle from full-model probe data ────────────────────────────────
+    fates       = probe_data['fates']
+    trajectories = probe_data['trajectories']
+    labels       = probe_data['labels']
+    bio_idx      = labels.index('biological_IC')
+    lc_indices   = [i for i, f in enumerate(fates) if f == 'limit_cycle']
 
-        def _panel_reduced(ax, Rg, Cg, dR, dC, xlim, ylim, label):
-            ax.set_facecolor('#E8F4F8')
-            ax.streamplot(Rg, Cg, dR, dC, color='#2C3E50', linewidth=1.5, density=1.5, arrowsize=1.3, arrowstyle='->')
-            ax.scatter(y_star_reduced[0], y_star_reduced[1], color='red', s=300, marker='x', linewidths=3.5, zorder=10)
-            ax.set_xlim(*xlim)
-            ax.set_ylim(*ylim)
-            ax.set_xlabel('R (Repressor)')
-            ax.set_ylabel('C (Complex)')
-            # ax.set_title(f'Reduced Model (2D QSSA) — {label}')
+    lc_rep = bio_idx if fates[bio_idx] == 'limit_cycle' else (lc_indices[0] if lc_indices else None)
+    lc_R = lc_C = None
+    if lc_rep is not None:
+        traj   = trajectories[lc_rep]
+        if traj is not None:
+            n_tail = len(traj['t']) // 4   # last 25 % → settled limit cycle
+            lc_R   = traj['R'][-n_tail:]
+            lc_C   = traj['C'][-n_tail:]
 
-        def _panel_full(ax, xlim, ylim, label, show_simple_legend=False):
-            for ic, fate in zip(ICs, fates):
-                if fate in ['failed', 'error']:
-                    continue
-                col = color_map.get(fate, fate_colors['failed'])
-                marker = 'o' if fate == 'limit_cycle' else 's'
-                ax.scatter(ic[R_idx], ic[C_idx], color=col, s=35, marker=marker, alpha=0.70, edgecolors='black', linewidths=0.3, zorder=2)
+    # ── axis limits (driven by the full model's limit-cycle extent) ───────────
+    if lc_R is not None:
+        R_max = float(np.percentile(lc_R, 99.5)) * 1.18
+        C_max = float(np.percentile(lc_C, 99.5)) * 1.18
+    else:
+        R_max, C_max = 2600.0, 2600.0
 
-            for idx in sampled_eq:
-                traj = trajectories[idx]
-                if traj is None:
-                    continue
-                ax.plot(traj['R'], traj['C'], color=fate_colors['equilibrium'], linewidth=1.4, alpha=0.45, zorder=3)
-                ax.scatter(traj['R'][0], traj['C'][0], s=85, marker='^', facecolors='white', edgecolors=fate_colors['equilibrium'], linewidths=1.5, zorder=9)
+    # ── convergent trajectories for the reduced model ─────────────────────────
+    # Seed from four evenly-spaced points around the limit cycle so that
+    # both panels share the same "starting positions", making the difference vivid.
+    red_trajs = []
+    if lc_R is not None:
+        n_lc   = len(lc_R)
+        seeds  = [int(i * n_lc / 4) for i in range(4)]
+        for idx in seeds:
+            ic  = [float(lc_R[idx]), float(lc_C[idx])]
+            sol = solve_ivp(
+                lambda t, y: reduced_vkb_ode(t, y, params),
+                (0, 1400), ic,
+                method='BDF',
+                t_eval=np.linspace(0, 1400, 4500),
+                rtol=ODE_TOLERANCES['rtol'],
+                atol=ODE_TOLERANCES['atol'],
+            )
+            if sol.success:
+                red_trajs.append({'R': sol.y[0], 'C': sol.y[1]})
 
-            for idx in sampled_lc:
-                traj = trajectories[idx]
-                if traj is None:
-                    continue
-                ax.plot(traj['R'], traj['C'], color=fate_colors['limit_cycle'], linewidth=1.6, alpha=0.45, zorder=3)
-                ax.scatter(traj['R'][0], traj['C'][0], s=85, marker='v', facecolors='white', edgecolors=fate_colors['limit_cycle'], linewidths=1.5, zorder=9)
+    # ── helpers ───────────────────────────────────────────────────────────────
+    def _setup_ax(ax):
+        """Paper-style axes: spines through origin, single '0' tick, R/C tips."""
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_position(('data', 0))
+        ax.spines['bottom'].set_position(('data', 0))
+        ax.set_xlim(0, R_max)
+        ax.set_ylim(0, C_max)
+        ax.set_xticks([0])
+        ax.set_yticks([0])
+        ax.set_xticklabels(['0'])
+        ax.set_yticklabels(['0'])
+        ax.text(R_max * 1.03, -C_max * 0.03, 'R', fontsize=14, va='top', clip_on=False)
+        ax.text(-R_max * 0.02, C_max * 1.03, 'C', fontsize=14, ha='right', clip_on=False)
 
-            if R_bio is not None:
-                ax.plot(R_bio, C_bio, color='#5A5A5A', linewidth=1.2, linestyle='--', alpha=0.6, zorder=4)
-                if R_focus is not None:
-                    ax.plot(R_focus, C_focus, color='#111111', linewidth=1.9, linestyle='--', alpha=0.92, zorder=6)
-                    for frac in (0.35, 0.65, 0.88):
-                        i0 = int(frac * (len(R_focus) - 2))
-                        i1 = min(i0 + 4, len(R_focus) - 1)
-                        ax.annotate('', xy=(R_focus[i1], C_focus[i1]), xytext=(R_focus[i0], C_focus[i0]), arrowprops=dict(arrowstyle='->', color='#111111', lw=1.2), zorder=7)
+    def _arrows(ax, x, y, fracs, color='black', lw=1.3, ms=15):
+        n = len(x)
+        for frac in fracs:
+            i0 = int(frac * n)
+            i1 = min(i0 + max(1, n // 60), n - 1)
+            if i0 != i1:
+                ax.annotate('', xy=(x[i1], y[i1]), xytext=(x[i0], y[i0]),
+                            arrowprops=dict(arrowstyle='->', color=color,
+                                           lw=lw, mutation_scale=ms))
 
-            if lc_tail_R is not None:
-                ax.plot(lc_tail_R, lc_tail_C, color=fate_colors['limit_cycle'], linewidth=3.5, alpha=0.95, zorder=5)
-                mid = len(lc_tail_R) // 2
-                ax.scatter(lc_tail_R[mid], lc_tail_C[mid], color=fate_colors['limit_cycle'], s=150, marker='o', edgecolors='black', linewidths=2, zorder=6)
+    # Nullcline masks (only plot where C ≥ 0 and within axis range)
+    mask_c = (C_nc >= 0) & (C_nc <= C_max * 1.25) & (R_arr <= R_max * 1.02)
+    mask_r = (R_nc >= 0) & (R_nc <= C_max * 1.25) & (R_arr <= R_max * 1.02)
 
-            ax.scatter(ICs[bio_idx, R_idx], ICs[bio_idx, C_idx], color=neutral_colors['gold'], s=250, marker='*', edgecolors='black', linewidths=1.5, zorder=16)
-            ax.scatter(y_star_full[R_idx], y_star_full[C_idx], color='red', s=300, marker='x', linewidths=3.5, zorder=10)
+    # Pre-compute label positions — place both labels at the RIGHT end of each curve
+    # (matching Vilar et al. style: labels stacked at lower-right, Ṙ=0 above Ċ=0)
+    def _right_end(mask, arr_R, arr_C, quantile=0.90):
+        """Return (R, C) at the rightmost visible portion of a nullcline."""
+        if not np.any(mask):
+            return R_max * 0.8, C_max * 0.05
+        idx = int(np.sum(mask) * quantile)
+        return float(arr_R[mask][idx]), float(arr_C[mask][idx])
 
-            ax.set_xlim(*xlim)
-            ax.set_ylim(*ylim)
-            ax.set_xlabel('R (Repressor)')
-            ax.set_ylabel('C (Complex)')
-            # ax.set_title(f'Full Model (9D ODE, R–C projection) — {label}')
+    nc_label_R, nc_label_C = _right_end(mask_c, R_arr, C_nc)   # Ċ=0 curve right end
+    nr_label_R, nr_label_C = _right_end(mask_r, R_arr, R_nc)   # Ṙ=0 curve right end
 
-            if show_simple_legend:
-                from matplotlib.lines import Line2D
-                leg = [
-                    Line2D([0], [0], color='#222222', lw=1.9, linestyle='--', label='Biological Trajectory'),
-                    Line2D([0], [0], color=fate_colors['limit_cycle'], lw=2.0, label='→ Limit Cycle'),
-                    Line2D([0], [0], color=fate_colors['equilibrium'], lw=1.8, label='→ Equilibrium'),
-                ]
-                ax.legend(handles=leg, loc='upper right', fontsize=9, framealpha=0.95)
+    def _draw_nullclines(ax, show_labels=True):
+        ax.plot(R_arr[mask_c], C_nc[mask_c], 'k-', lw=2.2, solid_capstyle='round', zorder=2)
+        ax.plot(R_arr[mask_r], R_nc[mask_r], 'k-', lw=2.2, solid_capstyle='round', zorder=2)
+        if show_labels:
+            # Ṙ=0 is above Ċ=0 on the right (since R_nc ≈ s_R·R > C_nc ≈ 0 for large R)
+            ax.text(nr_label_R + R_max * 0.02, nr_label_C,
+                    r'$\dot{R}=0$', fontsize=11, va='center', clip_on=False, zorder=3)
+            ax.text(nc_label_R + R_max * 0.02, nc_label_C - C_max * 0.03,
+                    r'$\dot{C}=0$', fontsize=11, va='top', clip_on=False, zorder=3)
 
-        _panel_reduced(axes[0, 0], Rg_wide, Cg_wide, dRw, dCw, xlim=(0, 2500), ylim=(0, 2500), label='Overview')
-        _panel_full(axes[0, 1], xlim=(-125, 2625), ylim=(-125, 2625), label='Overview', show_simple_legend=False)
-        _panel_reduced(axes[1, 0], Rg_zoom, Cg_zoom, dRz, dCz, xlim=(0, 200), ylim=(0, 500), label='Zoomed')
-        _panel_full(axes[1, 1], xlim=(-10, 210), ylim=(-10, 510), label='Zoomed', show_simple_legend=True)
+    # ── figure ────────────────────────────────────────────────────────────────
+    paper_rc = {**RC_PARAMS, 'axes.grid': False}
+    with plt.rc_context(paper_rc):
+        fig, axes = plt.subplots(1, 2, figsize=PLOT_CONFIG["FIGSIZE"]["paper_pair"])
 
-        # fig.suptitle(f'Phase Space Topology at $s_R = {s_R}$: QSSA Eliminates the Limit Cycle Attractor', fontsize=13, fontweight='bold', y=0.995)
-        plt.tight_layout(rect=[0.015, 0, 1, 0.985])
+        # ── LEFT: Reduced model (stable equilibrium, Vilar Fig-6 style) ──────
+        ax = axes[0]
+        _draw_nullclines(ax)
 
+        for traj in red_trajs:
+            Rp, Cp = traj['R'], traj['C']
+            visible = (Rp >= 0) & (Rp <= R_max * 1.05) & (Cp >= 0) & (Cp <= C_max * 1.05)
+            Rp, Cp = Rp[visible], Cp[visible]
+            if len(Rp) > 5:
+                ax.plot(Rp, Cp, 'k-', lw=1.4, alpha=0.80, zorder=3)
+                _arrows(ax, Rp, Cp, fracs=(0.12, 0.45, 0.78), lw=1.1, ms=13)
+
+        # Stable equilibrium: filled dot
+        ax.plot(R0_red, C0_red, 'ko', ms=7, zorder=10)
+        ax.annotate(r'$(R_0,\,C_0)$', xy=(R0_red, C0_red),
+                    xytext=(R0_red + R_max * 0.07, C0_red + C_max * 0.06),
+                    fontsize=11, arrowprops=dict(arrowstyle='->', lw=0.9))
+
+        _setup_ax(ax)
+        ax.set_title('Reduced model (QSSA) — stable equilibrium only', fontsize=12, pad=12)
+
+        # ── RIGHT: Full model (limit cycle, Vilar Fig-4 style) ───────────────
+        ax = axes[1]
+        _draw_nullclines(ax)
+
+        if lc_R is not None:
+            ax.plot(lc_R, lc_C, 'k-', lw=2.8, zorder=4)
+            _arrows(ax, lc_R, lc_C, fracs=(0.07, 0.30, 0.55, 0.80), lw=1.6, ms=17)
+
+        # Stable equilibrium (coexists with the limit cycle – subcritical bistability)
+        ax.plot(R0_full, C0_full, 'ko', ms=7, zorder=10)
+        ax.annotate(r'$(R_0,\,C_0)$', xy=(R0_full, C0_full),
+                    xytext=(R0_full + R_max * 0.07, C0_full + C_max * 0.06),
+                    fontsize=11, arrowprops=dict(arrowstyle='->', lw=0.9))
+
+        _setup_ax(ax)
+        ax.set_title('Full model (9D ODE) — bistable', fontsize=12, pad=12)
+
+        plt.tight_layout(pad=2.5)
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f'basin_comparison_sR_{s_R:.3f}.png')
-        fig.savefig(output_path, dpi=PLOT_CONFIG['DPI'], bbox_inches='tight')
+        out_path = os.path.join(output_dir, f'basin_comparison_sR_{s_R:.3f}.png')
+        fig.savefig(out_path, dpi=PLOT_CONFIG['DPI'], bbox_inches='tight')
         plt.close(fig)
 
-        print(f"Saved basin comparison plot to {output_path}")
+        print(f"Saved paper-style phase portrait to {out_path}")
 
 

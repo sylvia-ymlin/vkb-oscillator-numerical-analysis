@@ -1,160 +1,179 @@
-# Scientific Computing, Bridging Course, 2023 - Miniproject 2: Genetic Oscillator
+# Scientific Computing, Bridging Course, 2023 — Miniproject 2: Genetic Oscillator
 
-## 1. Background Introduction
+Course project on the Vilar–Kueh–Barkai (VKB) circadian model (9-species ODE + Gillespie SSA). Parts A–D reproduce the paper's core results; the extension then tests whether the 2-variable QSSA reduction still matches the full model near the oscillatory transition. Main findings:
 
-The Vilar-Kueh-Barkai (VKB) model [1] describes a circadian clock driven by two proteins: an activator (A) and a repressor (R), coupled through a 16-reaction, 9-variable biochemical network. The original paper analyzes this system through two frameworks: a deterministic ODE model and a stochastic SSA simulation, demonstrating that the oscillator is noise-resistant.
+- The reduced model shifts the Hopf threshold upward by about 22% in $s_R$, creating a parameter window where the full and reduced models disagree qualitatively.
+- Below the full model's Hopf point, a stable limit cycle can coexist with a stable equilibrium — subcritical bistability. The QSSA reduction removes this.
+- At $s_R = 0.088$, a coarse phase-space probe (Figure 11) and a global 50×50 scan on the $(R,C)$ plane (Figure 12) both confirm the split: the reduced flow collapses to a single attractor while the full model retains a large limit-cycle basin.
+- A distance-to-bifurcation heuristic ($d_\text{bif}$) gives a rough indication of when the reduction can be trusted.
 
-This project reproduces the paper's core results (Parts A–D), then investigates one extended question:
-
-The original paper derives a 2-variable QSSA reduction and uses it to analyze the oscillation mechanism — but validates it only at $s_R = 0.2$. The assignment results show that the system undergoes a qualitative transition between $s_R = 0.03$ (stable) and $s_R = 0.2$ (oscillatory). **Does the reduced model correctly capture this transition, or does the simplification break down near the boundary?** Section 3 addresses this question.
-
-## 2. Assignment Tasks
-
-### Part A: Deterministic Model and Solver Benchmarks
-
-Solving the 9-dimensional ODE system at the baseline value $s_R = 0.2$ replicates the deterministic dynamics of the VKB oscillator. The system exhibits sustained oscillations with a period of approximately 24 hours. Both activator A and repressor R concentrations oscillate strongly over a simulated 400-hour period.
-
-<div align="center">
-<img src="figures/assignment_a_ode.png" width="600" alt="Deterministic ODE">
-
-**Figure 1.** Deterministic ODE simulation (400 hours) for Activator A and Repressor R at $s_R = 0.2$.
-</div>
-
-<div align="center">
-<img src="figures/solver_step_sizes.png" width="600" alt="Solver step sizes">
-
-**Figure 2.** Internal step sizes ($\Delta t$) for RK45, BDF, and Radau over 48 hours.
-</div>
-
-**Solver Performance and Accuracy Tradeoff:**
-Deterministic integration over 400 hours requires over 1.4 million function evaluations using the explicit RK45 method. In contrast, the implicit solvers (BDF and Radau) reduce this cost by over 25x, utilizing step sizes up to $1.0$ h (Figure 2). 
-
-A key tradeoff exists between the two implicit methods:
-*   **BDF** is the most efficient choice for general simulation, completing the 48-hour benchmark in 0.12s. While its absolute error is the highest among the tested solvers ($\sim 10^{-4}$ to $10^{-6}$, Figure 3), it remains more than sufficient for reproducing stable oscillatory patterns.
-*   **Radau (Implicit Runge-Kutta)** is approximately twice as slow per step (0.21s overall) because it solves a larger nonlinear system at each stage. However, it provides 2–4 orders of magnitude higher precision ($\sim 10^{-8}$ to $10^{-14}$). This superior accuracy is critical for the **bifurcation and stability analysis** conducted in Section 3, where small numerical errors could lead to incorrect stability classifications near critical thresholds.
-
-RK45 is excluded from further analysis due to its extreme computational overhead in this stiff regime.
-
-<div align="center">
-<img src="figures/solver_errors.png" width="600" alt="Solver errors">
-
-**Figure 3.** Cross-solver absolute difference: BDF and Radau trajectories compared against a high-precision RK45 reference ($rtol=1e-12, atol=1e-14$).
-</div>
-
-### Part B: Stochastic Model
-
-At the cellular level, chemical reactions are intrinsically stochastic discrete events. The system is modeled as a **discrete Markov process** with a continuous time parameter. The Gillespie Stochastic Simulation Algorithm (SSA) simulates 400 hours of dynamics (Figure 4).
-
-<div align="center">
-<img src="figures/assignment_b_ssa.png" width="600" alt="Stochastic SSA">
-
-**Figure 4.** Stochastic SSA simulation (400 hours) for Activator A and Repressor R at $s_R = 0.2$.
-</div>
-
-**Discussion of Stochasticity:**
-Running the SSA simulation multiple times produces different realizations, as expected: SSA generates sample paths, not a unique solution.
-
-At $s_R = 0.2$, the stochastic trajectories **qualitatively agree** with the deterministic ODE solution; both demonstrate regular, sustained circadian oscillations with a comparable 24-hour period. However, they do not agree **quantitatively** due to molecular noise, which manifests in two distinct ways:
-*   **Phase drift**: Noise in reaction timing causes the peak positions to shift away from the rigid ODE schedule, accumulating to a drift of roughly 4–6 hours over a 400-hour period.
-*   **Amplitude noise**: Peak concentrations exhibit cycle-to-cycle modulation, with local amplitude variations typically ranging from 10% to 25% relative to the deterministic steady state.
-
-At this parameter value, the deterministic model is a reliable approximation. However, this agreement does not hold across all parameter regimes (see Part C).
-
-### Part C: Noise-Induced Oscillations
-
-The authors highlight that random white noise can lead to qualitative differences from the deterministic model. Lowering the repressor decay rate to $s_R = 0.03$ reproduces this phenomenon. 
-
-<div align="center">
-<img src="figures/assignment_c_noise.png" width="600" alt="Noise-Induced Oscillations">
-
-**Figure 5.** ODE vs. SSA comparison showing noise-induced sustained oscillations at critical threshold $s_R = 0.03$.
-</div>
-
-**Difference between Deterministic and Stochastic:**
-At $s_R = 0.03$, the deterministic ODE converges to a stable steady state. As noted by the original authors, the trace of the linearized system satisfies $\tau < 0$ at this parameter value, confirming that the fixed point is stable. The stochastic SSA, however, continues to produce oscillations. At low molecule counts, intrinsic fluctuations are large enough to perturb the system away from the stable equilibrium and trigger **excitable excursions** through phase space — effectively restarting the oscillatory cycle each time.
-
-This is consistent with the mechanism described in the original paper (Vilar et al. (2002), Fig. 6): the system is excitable near the fixed point, and stochastic perturbations substitute for the deterministic instability that drives oscillations at higher $s_R$ values.
-
-The eigenvalue spectrum along the trajectory confirms this distinction: at $s_R = 0.2$, the dominant eigenvalue pair periodically crosses $Re(\lambda) = 0$, sustaining oscillations; at $s_R = 0.03$, both dominant modes remain strictly negative.
-
-<div align="center">
-<img src="figures/stiffness_comparison_part_c.png" width="800" alt="Stiffness comparison Part C">
-
-**Figure 6.** Jacobian eigenvalue spectrum comparing steady ($s_R = 0.03$) and oscillatory ($s_R = 0.2$) regimes. The crossings in the right panel drive the deterministic oscillations.
-</div>
-
-### Part D: Deterministic vs. Stochastic Models
-
-**When is the deterministic model a reliable approximation?**
-At $s_R = 0.2$, the ODE and SSA produce qualitatively identical oscillations (Part B), with amplitude variations of 10–25%. In this regime, protein counts reach ~1500 molecules, making relative fluctuations ($\sim 1/\sqrt{N} \approx 2.6\%$) small enough that the deterministic approximation holds. Thus, in well-mixed macroscopic environments, ODEs allow for powerful mathematical analyses like bifurcation tracking and equilibrium eigenvalue analysis efficiently.
-
-**When does the stochastic model become necessary?**
-At $s_R = 0.03$, the deterministic model predicts a stable steady state while the SSA produces sustained oscillations (Part C). The qualitative disagreement arises because the system is excitable near the fixed point, and molecular fluctuations are large enough to trigger oscillatory excursions. In this regime, the deterministic model is not merely imprecise — it gives the wrong answer. Thus, when studying gene expression, single-cell dynamics, or systems near bifurcations where noise plays a structural role, stochastic modeling is necessary.
-
-This raises a related question for deterministic modeling: even within the ODE framework, model *reductions* (such as QSSA) can also change qualitative behavior. Section 3 investigates this trade-off between computational cost and dynamical accuracy.
+Numeric values below come from the analysis code run with fixed tolerances. Figures 5, 7, and 12 require the full pipeline (slow). See [Appendix 2](#appendix-2-quick-start-and-reproducibility) and [docs/figure_pipeline.md](docs/figure_pipeline.md).
 
 ---
 
-## 3. Extended Research: QSSA Reduction and Validity
+## 1. Background
 
-The original paper derives a 2-variable QSSA reduction ($R, C$) and uses it to analyze the oscillation mechanism — but validates it only at $s_R = 0.2$. Parts A–D show that the system undergoes a qualitative transition between $s_R = 0.03$ (stable) and $s_R = 0.2$ (oscillatory). **Does the reduced model correctly capture this transition, or does the simplification break down near the boundary?**
+The Vilar–Kueh–Barkai (VKB) model [1] describes a circadian clock driven by an activator (A) and a repressor (R), coupled through a 16-reaction, 9-variable biochemical network with mass-action kinetics. The original paper derives both a deterministic ODE formulation and a Gillespie SSA implementation, claiming the oscillator is noise-resistant.
 
-**Step 1: Quantifying the Bifurcation Shift (Analytical Foundation)**
+This project reproduces the paper's core results (Parts A–D) and extends them with one focused question: the paper derives a 2-variable QSSA reduction in $(R,C)$ and validates it mainly at $s_R = 0.2$. The assignment shows a qualitative transition between $s_R = 0.03$ (ODE steady state) and $s_R = 0.2$ (ODE oscillations). Does the reduced model capture that transition, or does the simplification break down near the boundary? Section 3 addresses this.
 
-We strictly computed the Hopf bifurcation thresholds by analyzing the eigenvalues of the **7D independent Jacobian subspace**. We found that the QSSA reduction introduces a significant **22% delay** in the system's transition to oscillation ($s_{R,Full} \approx 0.096$ vs. $s_{R,Reduced} \approx 0.117$).
+---
 
-<div align="center">
-<img src="figures/bifurcation_diagram.png" width="700" alt="Bifurcation diagram">
+## 2. Assignment tasks
 
-**Figure 7.** Hopf bifurcation diagram comparing full and reduced models. QSSA delays the onset of stability, creating a "grey zone" where the models mismatch qualitatively.
-</div>
+### Part A: Deterministic model and solver benchmarks
 
-**Step 2: Probing the "Conflict Zone" ($s_R = 0.088$)**
-
-Based on this calculation, $s_R = 0.088$ was strategically selected as a "blind spot" test case. It resides in the critical window where the full model has already developed a limit cycle (bistability), but the reduced model's topology remains fixed at a steady state. We mathematically predict that the reduced model will fail qualitatively here, not just quantitatively.
-
-**Step 3: Multi-dimensional Verification**
-
-Experimental results confirm the mathematical prediction.
+The 9-dimensional ODE is solved at $s_R = 0.2$ over 400 simulated hours. The trajectory reproduces the sustained oscillations in Vilar et al. (2002), with a period of roughly 24 h (Figure 1).
 
 <div align="center">
-<img src="figures/reduction_comparison.png" width="900" alt="Reduction comparison">
+<img src="figures/assignment_a_ode.png" width="500" alt="Deterministic ODE">
 
-**Figure 8.** Trajectory comparison. At $s_R = 0.088$, the reduced model (dashed) fails to capture the correct oscillatory dynamics, converging to a steady state instead.
+**Figure 1.** Deterministic ODE trajectory (400 h), activator A and repressor R at $s_R = 0.2$.
 </div>
 
-Phase-space basin analysis reveals the underlying mechanism: the QSSA reduction collapses the complex bistable topology to a single attractor — the limit cycle is lost entirely.
+To compare solver performance, RK45, BDF, and Radau are run over 48 h with internal step logging (Figure 2). The system is stiff: RK45 takes steps on the order of $10^{-3}$ h in the steep phases, resulting in on the order of $10^6$ total function evaluations over a long run. BDF and Radau both take steps up to $\sim 1\,\mathrm{h}$ in the slow phase.
 
 <div align="center">
-<img src="figures/basin_comparison_sR_0.088.png" width="900" alt="Basin comparison">
+<img src="figures/solver_step_sizes.png" width="500" alt="Solver step sizes">
 
-**Figure 9.** Basin comparison plot. The full model (right) possesses a limit cycle; the reduced model (left) collapses the phase space to a single point attractor.
+**Figure 2.** Internal step sizes $\Delta t$ for RK45, BDF, and Radau over 48 h.
 </div>
 
-**Step 4: When can we trust QSSA?**
-
-A bifurcation-distance criterion quantifies this: $d_\text{bif} = \min(|s_R - s_{R,\text{Hopf}}| / s_{R,\text{Hopf}})$. The empirical bound $d_\text{bif} \lesssim 10\%$ marks the reliability limit where the reduction is likely to fail.
+In the 48 h benchmark, BDF finished in about 0.12 s and Radau in about 0.21 s (wall time varies by hardware). Absolute trajectory errors against a high-precision RK45 reference ($\texttt{rtol}=10^{-12}$, $\texttt{atol}=10^{-14}$) are roughly $10^{-4}$–$10^{-6}$ for BDF and $10^{-8}$–$10^{-14}$ for Radau (Figure 3). Based on this, BDF is used for long exploratory runs and Radau where Jacobian eigenvalues must be accurate, for example when locating bifurcation points.
 
 <div align="center">
-<img src="figures/qssa_validity_criterion.png" width="800" alt="QSSA validity criterion">
+<img src="figures/solver_errors.png" width="500" alt="Solver errors">
 
-**Figure 10.** QSSA validity summary. The reduction is robust only when the system is far from critical stability transitions.
+**Figure 3.** Absolute trajectory error for BDF and Radau relative to a high-precision RK45 reference ($\texttt{rtol}=10^{-12}$, $\texttt{atol}=10^{-14}$).
 </div>
+
+### Part B: Stochastic model
+
+The SSA is implemented using GillesPy2 with the same 16 reactions as the ODE. Figure 4 shows one 400 h trajectory at $s_R = 0.2$. The path oscillates qualitatively like the ODE limit cycle, though individual trajectories drift in phase and vary in amplitude.
+
+<div align="center">
+<img src="figures/assignment_b_ssa.png" width="500" alt="Stochastic SSA">
+
+**Figure 4.** Single SSA trajectory (400 h), A and R at $s_R = 0.2$.
+</div>
+
+To quantify that variability, 50 independent SSA runs are collected and periods and amplitudes extracted via peak detection (Figure 5; regenerate with `python main.py stats` or `python main.py all --full`).
+
+<div align="center">
+<img src="figures/ssa_stats_sR_0.2.png" width="500" alt="SSA Statistics sR 0.2">
+
+**Figure 5.** 50 independent SSA trajectories at $s_R = 0.2$; period distribution $\mu_T \approx 24.3 \pm 0.4\,\mathrm{h}$ (for the run shown).
+</div>
+
+At $s_R = 0.2$, the SSA and ODE agree qualitatively — both show sustained oscillations with a roughly 24 h period. The spread in Figure 5 reflects stochastic phase drift and amplitude fluctuations.
+
+### Part C: Noise-induced oscillations
+
+At $s_R = 0.03$, the deterministic ODE settles to a stable equilibrium. SSA trajectories, however, remain oscillatory (Figure 6). This is noise-induced oscillation: the equilibrium is linearly stable, but stochastic fluctuations repeatedly kick the system into excitable excursions.
+
+<div align="center">
+<img src="figures/assignment_c_noise.png" width="500" alt="Noise-Induced Oscillations">
+
+**Figure 6.** ODE vs SSA at $s_R = 0.03$: the ODE decays to steady state while SSA continues to oscillate.
+</div>
+
+Running the same 50-trajectory statistics at $s_R = 0.03$ gives a much wider period distribution, with $\mu_T \approx 110 \pm 16\,\mathrm{h}$ for the run shown (Figure 7; same pipeline as Figure 5).
+
+<div align="center">
+<img src="figures/ssa_stats_sR_0.03.png" width="500" alt="SSA Statistics sR 0.03">
+
+**Figure 7.** 50 independent SSA trajectories at $s_R = 0.03$; period distribution is much wider than Figure 5.
+</div>
+
+The eigenvalue spectrum confirms the equilibrium is stable at $s_R = 0.03$ (all eigenvalues have negative real parts). The oscillatory SSA behavior is consistent with Vilar et al. (2002): the system is close enough to a Hopf bifurcation that noise drives sustained excursions even though the deterministic fixed point is stable.
+
+<div align="center">
+<img src="figures/stiffness_comparison_part_c.png" width="500" alt="Stiffness comparison Part C">
+
+**Figure 8.** Jacobian eigenvalue spectra at $s_R = 0.03$ (steady) vs $s_R = 0.2$ (oscillatory).
+</div>
+
+### Part D: When ODE vs SSA matters
+
+At $s_R = 0.2$, molecule counts are large enough that the mass-action ODE is a reasonable approximation, and the two approaches agree qualitatively. At $s_R = 0.03$, the ODE gives the wrong qualitative answer — it predicts a stable steady state while SSA shows oscillations. Stochastic modeling is structurally necessary near that parameter regime.
+
+The same logic applies to model reduction within the deterministic setting: simplifications accurate at $s_R = 0.2$ can fail near the oscillatory transition. That question drives Section 3.
+
+---
+
+## 3. Extension: QSSA reduction and validity
+
+The paper's 2D QSSA in $(R,C)$ is presented as a simplification of the full 9D model. This extension tests how far that simplification holds, focusing on the parameter region where the two models disagree.
+
+**Step 1 — Hopf threshold comparison**
+
+The Hopf bifurcation is located for both models by scanning $s_R$ and finding where $\max \mathrm{Re}(\lambda) = 0$ at the equilibrium. For the full model, a 7D algebraic reduction enforcing $D_A + D_A' = 1$ and $D_R + D_R' = 1$ is used to avoid the two spurious zero eigenvalues from those conservation constraints. Near the bifurcation, direct root-finding becomes ill-conditioned, so continuation in $s_R$ is used instead.
+
+The result: the QSSA raises the Hopf threshold by about 22%, from $s_{R,\mathrm{Full}} \approx 0.096$ to $s_{R,\mathrm{Reduced}} \approx 0.117$.
+
+<div align="center">
+<img src="figures/bifurcation_diagram.png" width="500" alt="Bifurcation diagram">
+
+**Figure 9.** $\max \mathrm{Re}(\lambda)$ at equilibrium vs $s_R$ for the full and reduced models. The grey band $[0.096, 0.117]$ marks the region where they disagree on stability.
+</div>
+
+**Step 2 — Subcritical bistability at $s_R = 0.088$**
+
+Below the full model's Hopf point, the bifurcation is subcritical: a stable limit cycle coexists with the stable equilibrium. This is examined at $s_R = 0.088$, where the eigenvalue evaluation gives $\max \mathrm{Re}(\lambda) \approx -0.036$ — the equilibrium is linearly stable, yet the system can converge to either attractor depending on the initial condition.
+
+To probe the basin structure without a full grid scan, 72 initial conditions are integrated: one biological IC from the paper, 64 random perturbations of the equilibrium at four amplitude scales (16 draws per scale, RNG seed 42), and 7 axis-aligned perturbations. Of those, 39 converged to the limit cycle and 33 to the equilibrium. The reduced model shows no such coexistence over the scanned region — all trajectories settle to a single attractor.
+
+**Step 3 — Trajectory comparison**
+
+<div align="center">
+<img src="figures/reduction_comparison.png" width="500" alt="Reduction comparison">
+
+**Figure 10.** Full vs reduced model trajectories at $s_R = 0.088$, starting from the same initial condition. The full model reaches the limit cycle; the reduced model settles to equilibrium.
+</div>
+
+**Step 4 — Basin of attraction: coarse probe (Figure 11) vs global grid (Figure 12)**
+
+Figure 11 overlays the 25×25 reduced-model phase portrait with the 72-IC full-model probe described above. It shows the two models side by side in $(R,C)$ space.
+
+<div align="center">
+<img src="figures/basin_comparison_sR_0.088.png" width="500" alt="Basin comparison">
+
+**Figure 11.** Coarse phase-space comparison at $s_R = 0.088$: reduced $25\times 25$ grid (background) plus 72 full-model initial conditions (markers), colored by attractor.
+</div>
+
+Figure 12 uses a 50×50 grid on a large $(R,C)$ slice. Each grid point is lifted to 9D via QSSA and integrated to convergence — 2500 independent ODE solves, parallelized and cached in `materials/basin_scan_sR_0.088_50x50.pkl` to avoid re-running. The result shows the equilibrium basin as an isolated region inside a dominant limit-cycle basin.
+
+<div align="center">
+<img src="figures/basin_grid_sR_0.088.png" width="500" alt="Basin grid scan">
+
+**Figure 12.** Global 50×50 basin scan of the full model at $s_R = 0.088$. Hatching style distinguishes limit-cycle basin (/////) from equilibrium basin (\\\\). Slow to regenerate; use `python main.py basin-grid --plot-only` to replot from cache.
+</div>
+
+**Step 5 — When is the QSSA trustworthy?**
+
+A normalized distance-to-bifurcation is defined as $d_\text{bif} = |s_R - s_{R,\mathrm{Hopf}}| / s_{R,\mathrm{Hopf}}$ and plotted for both models (Figure 13). When $d_\text{bif}$ is small, the QSSA is more likely to give a qualitatively wrong answer. The subcritical nature of the full-model bifurcation makes this worse: the danger zone extends below the Hopf $s_R$ even while the equilibrium is still linearly stable.
+
+<div align="center">
+<img src="figures/qssa_validity_criterion.png" width="500" alt="QSSA validity criterion">
+
+**Figure 13.** $d_\text{bif}$ vs $s_R$ for the full and reduced models. The shaded region marks where the reduction is unreliable.
+</div>
+
+---
 
 ## 4. Conclusion
 
-This project reproduces the VKB oscillator analysis and extends it with a QSSA validity study. Three findings:
+1. **Solvers:** BDF is the practical choice for long simulations of this stiff system. Radau is slower but accumulates less error, which matters when computing Jacobian eigenvalues near a bifurcation.
+2. **ODE vs SSA:** At $s_R = 0.2$, the ODE and SSA agree qualitatively, and the ODE is sufficient. At $s_R = 0.03$, the ODE gives the wrong qualitative picture — SSA is needed to see the noise-induced oscillations.
+3. **QSSA validity:** The 2D reduction matches the full model well away from the oscillatory transition. Near the Hopf boundary, it shifts the threshold by ~22% and loses the subcritical bistability present in the full model. The $d_\text{bif}$ heuristic flags where the reduction is risky, but the subcritical structure means the reliable region is smaller than the threshold shift alone would suggest.
 
-1. **Solver choice**: BDF provides the best efficiency-accuracy tradeoff for general simulation; Radau is preferable near bifurcation boundaries where higher precision matters.
-
-2. **Deterministic vs. stochastic**: The ODE model is reliable at $s_R = 0.2$ (high molecule counts), but qualitatively wrong at $s_R = 0.03$ where noise-induced oscillations emerge.
-
-3. **QSSA validity**: The 2-variable reduction agrees with the full model far from bifurcation boundaries, but shifts the Hopf threshold by 22%, eliminating bistability in the near-threshold regime. The empirical bound $d_\text{bif} \lesssim 10\%$ identifies when this breakdown occurs.
+---
 
 ## Appendix
 
-### Appendix Table 1: 16-Reaction Chemical Network 
-The following reactions form the basis for both the deterministic 9-variable ODE model and the stochastic SSA simulation of the VKB oscillator.
+### Appendix Table 1: 16-reaction network
+
+The following reactions are shared by the 9-variable ODE and the Gillespie SSA.
 
 <div id="appendix-table-1" align="center">
 
@@ -179,17 +198,30 @@ The following reactions form the basis for both the deterministic 9-variable ODE
 
 </div>
 
-### Appendix 2: Quick Start
+### Appendix 2: Quick start and reproducibility
 
-Recommended Python version: **Python 3.9**
+**Environment:** Python **3.9+** recommended.
 
 ```bash
 conda create -n genetic-oscillators python=3.9
 conda activate genetic-oscillators
 pip install -r requirements.txt
+```
 
-# Run complete analysis pipeline to fetch all figures
-python main.py all
+**Pipelines**
+
+| Command                                 | Purpose                                                                        | Rough time                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
+| `python main.py all`                    | Lite: figures 1–4, 6–11, 13 (no SSA stats batch, no 50×50 grid)                | Often ~10–40 min on a laptop (depends on CPU) |
+| `python main.py all --full`             | Full: adds Figures 5, 7 (50 SSA trajectories) and Figure 12 (50×50 basin scan) | Often hours (SSA + 2500 ODE solves)           |
+| `python main.py stats`                  | Only SSA statistics panels                                                     | Long (many SSA runs)                          |
+| `python main.py basin-grid`             | Only 50×50 basin scan + Fig. 12                                                | Long                                          |
+| `python main.py basin-grid --plot-only` | Replot Fig. 12 from `materials/basin_scan_sR_0.088_50x50.pkl`                  | Seconds                                       |
+
+**Cached data:** The 50×50 basin scan is saved as `materials/basin_scan_sR_0.088_50x50.pkl`. Regenerate from scratch with:
+
+```bash
+python main.py basin-grid
 ```
 
 ## References

@@ -202,4 +202,41 @@ PLOT_CONFIG = {
         'reduced': 's',            # Reduced model: 方块
         'data': 'o',               # Data points: 圆点
     },
+
+    # Low-saturation palette for summary-only figures (bifurcation, QSSA validity, basin grid)
+    'SUMMARY_FIG_COLORS': {
+        'line_full': '#3d4854',
+        'line_reduced': '#5c7d99',
+        'valid_fill': '#b0c4b8',
+        'invalid_fill': '#c9aeae',
+        'hopf_full': '#5c6370',
+        'hopf_reduced': '#6e8aad',
+        'test_low': '#6d8aa8',
+        'test_mid': '#8a8a8a',
+        'test_high': '#b89f7a',
+        'region_stable': '#e8eeea',
+        'region_unstable': '#f2eaea',
+        'distance_line': '#3a3a3a',
+        'basin_failed': '#d4d4d4',
+        'basin_eq': '#aabdd4',
+        'basin_lc': '#d4c9b0',
+        'eq_cross': '#8b5a5a',
+    },
+
+    # Figure geometry (inches): fixed width for README/visual consistency
+    'FIGSIZE_W': 8.0,
+    'FIGSIZE': {
+        'single': (8.0, 4.0),
+        'dual_row': (8.0, 5.0),
+        'triple_row': (8.0, 8.5),
+        'dual_col': (10.0, 4.75),
+        'grid_2x2': (10.0, 8.0),
+        'paper_pair': (10.0, 5.0),
+        'heatmap': (6.6, 4.9),
+        'bifurcation_stack': (6.8, 5.35),
+        'bifurcation_diagram': (6.8, 3.65),
+        'validity': (8.0, 5.0),
+        'reduction': (10.0, 6.5),
+        'stiffness_1x2': (10.0, 4.75),
+    },
 }

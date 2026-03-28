@@ -52,7 +52,7 @@ def plot_reduction_comparison(cases, output_dir="figures"):
     reduced_r_color = r_colors[0]
 
     with plt.rc_context(RC_PARAMS):
-        fig, axes = plt.subplots(2, len(cases), figsize=(15, 7), sharex="col")
+        fig, axes = plt.subplots(2, len(cases), figsize=PLOT_CONFIG["FIGSIZE"]["reduction"], sharex="col")
 
         if len(cases) == 1:
             axes = np.array(axes).reshape(2, 1)

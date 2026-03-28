@@ -1,4 +1,5 @@
-numpy>=1.20
-scipy>=1.7
-matplotlib>=3.4
-gillespy2>=1.6
+# Pinned ranges used for development (Python 3.9+). Adjust if your environment requires newer stacks.
+numpy>=1.20,<2.0
+scipy>=1.7,<1.15
+matplotlib>=3.4,<3.10
+gillespy2>=1.6,<1.9

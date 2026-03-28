@@ -70,7 +70,7 @@ def plot_step_sizes(step_data, output_dir="figures"):
     r_colors = PLOT_CONFIG["COLORS"]["R"]
 
     with plt.rc_context(RC_PARAMS):
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=PLOT_CONFIG["FIGSIZE"]["single"])
         methods = ["RK45", "BDF", "Radau"]
         colors = [neutral_colors['gray'], a_colors[0], r_colors[0]]
         for i, method in enumerate(methods):
@@ -96,7 +96,7 @@ def plot_solver_errors(error_data, output_dir="figures"):
     r_colors = PLOT_CONFIG["COLORS"]["R"]
 
     with plt.rc_context(RC_PARAMS):
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=PLOT_CONFIG["FIGSIZE"]["bifurcation_stack"], sharex=True)
         
         methods = ["BDF", "Radau"]
         axes = [ax1, ax2]

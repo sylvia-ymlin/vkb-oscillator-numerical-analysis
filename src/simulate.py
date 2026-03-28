@@ -111,10 +111,14 @@ class VilarOscillator(Model):
 def run_ssa(s_R, trajectories, t_max, seed=None):
     """Run SSA simulation using GillesPy2 native solver handling."""
     model = VilarOscillator(s_R=s_R, t_max=t_max)
-    kwargs = {'number_of_trajectories': trajectories}
-    if seed is not None:
-        kwargs['seed'] = int(seed)
-    return model.run(**kwargs)
+    try:
+        from gillespy2.solvers.cpp.ssa_c_solver import SSACSolver
+        results = model.run(solver=SSACSolver, number_of_trajectories=trajectories, seed=seed)
+    except Exception as e:
+        print(f"Warning: C++ solver failed ({e}), Falling back to NumPySSASolver...")
+        from gillespy2.solvers.numpy.ssa_solver import NumPySSASolver
+        results = model.run(solver=NumPySSASolver, number_of_trajectories=trajectories, seed=seed)
+    return results
 
 
 

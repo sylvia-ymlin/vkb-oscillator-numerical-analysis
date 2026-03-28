@@ -59,7 +59,7 @@ def plot_assignment_figures(cases, output_dir="figures"):
             
             # Assignment A: ODE 0.2
             if s_R == 0.2:
-                fig, axes = plt.subplots(2, 1, figsize=(8, 4.5), sharex=True)
+                fig, axes = plt.subplots(2, 1, figsize=PLOT_CONFIG["FIGSIZE"]["dual_row"], sharex=True)
                 axes[0].plot(ode_result["time"], ode_result["A"], color=a_colors[0], lw=2)
                 axes[0].set_ylabel("Activator (A)")
                 axes[1].plot(ode_result["time"], ode_result["R"], color=r_colors[0], lw=2)
@@ -70,7 +70,7 @@ def plot_assignment_figures(cases, output_dir="figures"):
                 plt.close(fig)
 
                 # Assignment B: SSA 0.2
-                fig, axes = plt.subplots(2, 1, figsize=(8, 4.5), sharex=True)
+                fig, axes = plt.subplots(2, 1, figsize=PLOT_CONFIG["FIGSIZE"]["dual_row"], sharex=True)
                 for idx, traj in enumerate(ssa_results):
                     shade = 1 + idx % (len(a_colors) - 1)
                     axes[0].step(traj["time"], traj["A"], where="post", color=a_colors[shade], lw=1.2, alpha=0.7)
@@ -86,7 +86,7 @@ def plot_assignment_figures(cases, output_dir="figures"):
 
             # Assignment C: ODE vs SSA 0.03
             if s_R == 0.03:
-                fig, axes = plt.subplots(2, 1, figsize=(8, 4.5), sharex=True)
+                fig, axes = plt.subplots(2, 1, figsize=PLOT_CONFIG["FIGSIZE"]["dual_row"], sharex=True)
                 axes[0].plot(ode_result["time"], ode_result["A"], color="black", lw=1.5, linestyle="--", label="ODE", zorder=3)
                 axes[1].plot(ode_result["time"], ode_result["R"], color="black", lw=1.5, linestyle="--", label="ODE", zorder=3)
                 traj = ssa_results[0]

@@ -128,12 +128,14 @@ def plot_stiffness_diagnostics(s_R_values=(0.03, 0.088, 0.2),
         n_cols = len(s_R_values)
         if show_stiffness:
             if n_cols == 1:
-                fig, axes_flat = plt.subplots(1, 2, figsize=(12, 5))
+                fig, axes_flat = plt.subplots(1, 2, figsize=PLOT_CONFIG["FIGSIZE"]["stiffness_1x2"])
                 axes = np.array([axes_flat]).T  # shape (2, 1)
             else:
-                fig, axes = plt.subplots(2, n_cols, figsize=(5 * n_cols, 8), squeeze=False)
+                _w = min(14.0, 4.5 * n_cols + 1.0)
+                fig, axes = plt.subplots(2, n_cols, figsize=(_w, 7.5), squeeze=False)
         else:
-            fig, axes = plt.subplots(1, n_cols, figsize=(5 * n_cols, 5), squeeze=False)
+            _w = min(14.0, 4.5 * n_cols + 1.0)
+            fig, axes = plt.subplots(1, n_cols, figsize=(_w, 4.75), squeeze=False)
         
         neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
         eig_colors = PLOT_CONFIG['EIGENVALUE_COLORS']

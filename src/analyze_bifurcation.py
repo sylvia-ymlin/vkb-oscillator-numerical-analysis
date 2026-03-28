@@ -154,32 +154,77 @@ def compute_max_real_part_at_equilibrium(s_R, model='reduced'):
         return np.nan
 
 
-def find_hopf_bifurcation_threshold(model='reduced', s_R_range=(0.05, 0.15), tol=1e-6):
-    def objective(s_R_val):
-        return compute_max_real_part_at_equilibrium(s_R_val, model=model)
+def find_hopf_bifurcation_threshold(model='reduced', s_R_range=(0.05, 0.15), tol=1e-6, n_scan=80):
+    """
+    Find the Hopf bifurcation threshold using continuation-based equilibrium tracking.
 
-    f_min = objective(s_R_range[0])
-    f_max = objective(s_R_range[1])
+    The previous cold-start implementation called find_full_equilibrium with a fixed
+    default guess at every brentq evaluation.  For s_R above the full-model Hopf
+    threshold (~0.096) the solver diverges to a non-physical solution, producing
+    spurious eigenvalues of ~+140.  brentq detected a sign change between the last
+    valid point (maxRe ≈ -0.001) and the first garbage point (+140) and converged to
+    the right value by accident — but the method was unreliable.
 
-    if np.isnan(f_min) or np.isnan(f_max):
-        print(f"Warning: Cannot evaluate objective at bracket endpoints for {model} model")
+    This version:
+      1. Scans the range with continuation (compute_bifurcation_curve) to locate the
+         sign-change bracket, sidestepping the cold-start failure entirely.
+      2. Bisects within that bracket, always warm-starting from the last stable
+         equilibrium, so the solver stays on the physical branch above the threshold.
+    """
+    # ── Step 1: coarse scan with continuation to bracket the sign change ──────
+    s_scan = np.linspace(s_R_range[0], s_R_range[1], n_scan)
+    curve  = compute_bifurcation_curve(s_scan, model=model)
+    mr_vals = curve['max_real_parts']
+    eq_vals  = curve['equilibria']
+
+    s_lo = s_hi = None
+    eq_lo_guess = None
+    for i in range(len(mr_vals) - 1):
+        lo_v, hi_v = mr_vals[i], mr_vals[i + 1]
+        if np.isnan(lo_v) or np.isnan(hi_v):
+            continue
+        if lo_v < 0 < hi_v:          # stable → unstable crossing (Hopf)
+            s_lo, s_hi   = float(s_scan[i]), float(s_scan[i + 1])
+            eq_lo_guess  = eq_vals[i]
+            break
+
+    if s_lo is None:
+        print(f"Warning: No Hopf threshold found in {s_R_range} for {model} model.")
         return None
 
-    if f_min * f_max > 0:
-        print(f"Warning: No sign change in bracket [{s_R_range[0]}, {s_R_range[1]}] for {model} model")
-        print(f"  f({s_R_range[0]}) = {f_min:.6f}")
-        print(f"  f({s_R_range[1]}) = {f_max:.6f}")
-        return None
+    # ── Step 2: bisect within [s_lo, s_hi] using continuation from s_lo ──────
+    def _max_re(s_R, guess):
+        p = {**DEFAULT_PARAMS, 's_R': s_R}
+        try:
+            if model == 'reduced':
+                y = find_reduced_equilibrium(s_R, initial_guess=guess)
+                J = reduced_vkb_jac(0, y, p)
+            else:
+                y = find_full_equilibrium(s_R, initial_guess=guess)
+                if np.min(y) < -1e-4:       # non-physical → treat as unstable
+                    return np.nan, None
+                J = full_jacobian_7d(y, p)
+            return float(np.max(np.real(np.linalg.eigvals(J)))), y
+        except Exception:
+            return np.nan, None
 
-    try:
-        sol = root_scalar(objective, bracket=s_R_range, method='brentq', xtol=tol)
-        if sol.converged:
-            return sol.root
-        print(f"Warning: Root finding did not converge for {model} model")
-        return None
-    except Exception as e:
-        print(f"Error in root finding for {model} model: {e}")
-        return None
+    eq_lo = eq_lo_guess
+    for _ in range(60):                     # at most 60 bisection steps → tol ≈ 1e-18
+        if s_hi - s_lo < tol:
+            break
+        s_mid = (s_lo + s_hi) / 2.0
+        mr_mid, eq_mid = _max_re(s_mid, eq_lo)
+
+        if np.isnan(mr_mid):
+            s_hi = s_mid                    # solver failed → assume unstable side
+        elif mr_mid < 0:                    # still stable → threshold lies above
+            s_lo = s_mid
+            if eq_mid is not None:
+                eq_lo = eq_mid
+        else:                               # unstable → threshold lies below
+            s_hi = s_mid
+
+    return (s_lo + s_hi) / 2.0
 
 
 def compute_bifurcation_curve(s_R_values, model='reduced'):
@@ -253,27 +298,6 @@ def compare_bifurcation_thresholds(s_R_range=(0.05, 0.15), verbose=True):
         shift_percent = (shift / s_R_full) * 100
 
         _log(f"Threshold shift: Δs_R = {shift:+.6f} ({shift_percent:+.2f}%)")
-        _log()
-        _log("=" * 80)
-        _log("Interpretation:")
-        _log("=" * 80)
-        _log()
-        _log("At s_R = 0.088:")
-
-        if s_R_full < 0.088 < s_R_reduced:
-            _log(f"  • Full model: ABOVE threshold ({s_R_full:.4f}) → Oscillating")
-            _log(f"  • Reduced model: BELOW threshold ({s_R_reduced:.4f}) → Stable steady state")
-            _log()
-            _log("This explains the QSSA breakdown at s_R = 0.088:")
-            _log("Dimension reduction alters the phase space topology, shifting the bifurcation.")
-        else:
-            _log("  • Threshold-only classification is inconclusive at this parameter value.")
-            _log("  • Use basin-of-attraction results to resolve attractor coexistence behavior.")
-
-        _log()
-        _log("The QSSA approximation shifts the bifurcation threshold because it")
-        _log("eliminates 7 fast variables, fundamentally altering the phase space structure.")
-
     _log("=" * 80)
 
     return {
@@ -393,89 +417,90 @@ def plot_qssa_validity_regions():
     validity = np.array(validity)
     min_distances = np.array(min_distances)
     
-    # Plot
+    # Plot (muted palette + compact canvas — Fig. 13)
+    sc = PLOT_CONFIG['SUMMARY_FIG_COLORS']
+    test_points = [
+        (0.03, 'Steady', sc['test_low']),
+        (0.088, 'Near-threshold', sc['test_mid']),
+        (0.2, 'Oscillatory', sc['test_high']),
+    ]
     with plt.rc_context(RC_PARAMS):
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-        
-        # Get unified colors
-        valid_color = PLOT_CONFIG['STATUS_COLORS']['valid']
-        invalid_color = PLOT_CONFIG['STATUS_COLORS']['invalid']
-        full_color = PLOT_CONFIG['BIFURCATION_COLORS']['full_threshold']
-        reduced_color = PLOT_CONFIG['BIFURCATION_COLORS']['reduced_threshold']
-        
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1,
+            figsize=PLOT_CONFIG["FIGSIZE"]["bifurcation_stack"],
+            sharex=True,
+            constrained_layout=True,
+        )
+
+        valid_color = sc['valid_fill']
+        invalid_color = sc['invalid_fill']
+        full_color = sc['hopf_full']
+        reduced_color = sc['hopf_reduced']
+
         # Panel 1: Validity regions
-        ax1.fill_between(s_R_values, 0, 1, where=validity, 
-                        alpha=0.3, color=valid_color, label='QSSA Reliable')
-        ax1.fill_between(s_R_values, 0, 1, where=~validity, 
-                        alpha=0.3, color=invalid_color, label='QSSA Unreliable')
-        
-        # Mark bifurcation thresholds
-        ax1.axvline(s_R_full, color=full_color, linestyle='--', linewidth=2,
-                   label=f'Full Model Hopf: {s_R_full:.3f}')
-        ax1.axvline(s_R_reduced, color=reduced_color, linestyle='--', linewidth=2,
-                   label=f'Reduced Model Hopf: {s_R_reduced:.3f}')
-        
-        # Mark 10% margins
+        ax1.fill_between(
+            s_R_values, 0, 1, where=validity,
+            alpha=0.5, color=valid_color, label='QSSA reliable',
+        )
+        ax1.fill_between(
+            s_R_values, 0, 1, where=~validity,
+            alpha=0.5, color=invalid_color, label='QSSA unreliable',
+        )
+
+        ax1.axvline(s_R_full, color=full_color, linestyle='--', linewidth=1.25,
+                    label=f'Full Hopf {s_R_full:.3f}')
+        ax1.axvline(s_R_reduced, color=reduced_color, linestyle='--', linewidth=1.25,
+                    label=f'Reduced Hopf {s_R_reduced:.3f}')
+
         margin_full_low = s_R_full * 0.9
         margin_full_high = s_R_full * 1.1
         margin_reduced_low = s_R_reduced * 0.9
         margin_reduced_high = s_R_reduced * 1.1
-        
-        ax1.axvline(margin_full_low, color=full_color, linestyle=':', linewidth=1, alpha=0.5)
-        ax1.axvline(margin_full_high, color=full_color, linestyle=':', linewidth=1, alpha=0.5)
-        ax1.axvline(margin_reduced_low, color=reduced_color, linestyle=':', linewidth=1, alpha=0.5)
-        ax1.axvline(margin_reduced_high, color=reduced_color, linestyle=':', linewidth=1, alpha=0.5)
-        
-        # Mark test points — use BIFURCATION_COLORS for consistency with Fig 9
-        bifurc_colors = PLOT_CONFIG['BIFURCATION_COLORS']
-        test_points = [
-            (0.03,  'Steady',     bifurc_colors['test_steady']),
-            (0.088, 'Near-threshold', bifurc_colors['test_bistable']),
-            (0.2,   'Oscillatory', bifurc_colors['test_oscillatory']),
-        ]
+
+        ax1.axvline(margin_full_low, color=full_color, linestyle=':', linewidth=0.9, alpha=0.45)
+        ax1.axvline(margin_full_high, color=full_color, linestyle=':', linewidth=0.9, alpha=0.45)
+        ax1.axvline(margin_reduced_low, color=reduced_color, linestyle=':', linewidth=0.9, alpha=0.45)
+        ax1.axvline(margin_reduced_high, color=reduced_color, linestyle=':', linewidth=0.9, alpha=0.45)
+
         neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
+        edge = neutral_colors['gray_dark']
         for i, (s_R_test, label, t_color) in enumerate(test_points):
             result = assess_qssa_validity(s_R_test, s_R_full, s_R_reduced)
             marker = 'o' if result['valid'] else 'x'
-            ax1.plot(s_R_test, 0.5, marker, markersize=12, color=t_color,
-                    markeredgecolor=neutral_colors['black'], markeredgewidth=1.5, zorder=5)
-            
-            # Adjust vertical position to avoid overlap
-            y_pos = 0.75 if i == 1 else 0.65  # Middle point higher to avoid overlap
-            ax1.text(s_R_test, y_pos, label, ha='center', fontsize=9,
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor=neutral_colors['white'], 
-                             edgecolor=neutral_colors['gray'], alpha=0.9, linewidth=0.5))
-        
-        ax1.set_ylabel('QSSA Validity', fontsize=11)
-        ax1.set_ylim(-0.1, 1.2)  # Extended upper limit to accommodate labels
+            ax1.plot(s_R_test, 0.5, marker, markersize=9, color=t_color,
+                     markeredgecolor=edge, markeredgewidth=0.9, zorder=5)
+
+            y_pos = 0.78 if i == 1 else 0.66
+            ax1.text(s_R_test, y_pos, label, ha='center', fontsize=8,
+                     bbox=dict(boxstyle='round,pad=0.22', facecolor='#fafafa',
+                               edgecolor=neutral_colors['gray_light'], alpha=0.95, linewidth=0.4))
+
+        ax1.set_ylabel('QSSA validity', fontsize=10)
+        ax1.set_ylim(-0.08, 1.12)
         ax1.set_yticks([0, 1])
         ax1.set_yticklabels(['Unreliable', 'Reliable'])
-        ax1.legend(loc='upper right', fontsize=8, ncol=2, framealpha=0.95)
-        # ax1.set_title(...)
-        ax1.grid(True, alpha=0.3, axis='x')
-        
+        ax1.legend(loc='upper right', fontsize=7, ncol=2, framealpha=0.92)
+        ax1.grid(True, alpha=0.22, axis='x')
+
         # Panel 2: Distance metric
-        ax2.plot(s_R_values, min_distances, 'k-', linewidth=2, label='Min relative distance')
-        ax2.axhline(0.1, color=invalid_color, linestyle='--', linewidth=2, alpha=0.7,
-               label='10% threshold')
-        ax2.fill_between(s_R_values, 0, 0.1, alpha=0.2, color=invalid_color)
-        ax2.fill_between(s_R_values, 0.1, 1, alpha=0.2, color=valid_color)
-        
-        # Mark test points (same colors as ax1)
-        neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
+        ax2.plot(s_R_values, min_distances, color=sc['distance_line'], linewidth=1.6,
+                 label='Min relative distance')
+        ax2.axhline(0.1, color=invalid_color, linestyle='--', linewidth=1.2, alpha=0.85,
+                    label='10% threshold')
+        ax2.fill_between(s_R_values, 0, 0.1, alpha=0.35, color=invalid_color)
+        ax2.fill_between(s_R_values, 0.1, 1, alpha=0.28, color=valid_color)
+
         for s_R_test, label, t_color in test_points:
             result = assess_qssa_validity(s_R_test, s_R_full, s_R_reduced)
-            ax2.plot(s_R_test, result['min_distance'], 'o', markersize=10,
-                    color=t_color, markeredgecolor=neutral_colors['black'], markeredgewidth=1.5, zorder=5)
-        
-        ax2.set_xlabel('$s_R$ (Repressor Degradation Rate)', fontsize=11)
-        ax2.set_ylabel('Min Relative Distance\nto Bifurcation', fontsize=11)
-        ax2.set_ylim(0, max(0.5, np.max(min_distances) * 1.1))
-        ax2.legend(loc='upper right', fontsize=9)
-        ax2.grid(True, alpha=0.3)
-        
-        fig.tight_layout()
-        
+            ax2.plot(s_R_test, result['min_distance'], 'o', markersize=8,
+                     color=t_color, markeredgecolor=edge, markeredgewidth=0.9, zorder=5)
+
+        ax2.set_xlabel('$s_R$ (repressor degradation rate)', fontsize=10)
+        ax2.set_ylabel('Min relative distance\nto bifurcation', fontsize=10)
+        ax2.set_ylim(0, max(0.5, np.max(min_distances) * 1.08))
+        ax2.legend(loc='upper right', fontsize=7.5, framealpha=0.92)
+        ax2.grid(True, alpha=0.22)
+
         import os
         figures_dir = PLOT_CONFIG.get('FIGURES_DIR', PLOT_CONFIG['IMG_DIR'])
         os.makedirs(figures_dir, exist_ok=True)
@@ -542,74 +567,62 @@ def plot_bifurcation_diagram(s_R_range=(0.05, 0.15), n_points=30):
     s_R_full = find_hopf_bifurcation_threshold(model='full', s_R_range=s_R_range)
     s_R_reduced = find_hopf_bifurcation_threshold(model='reduced', s_R_range=s_R_range)
     
-    # Plot
+    # Plot — muted palette, compact canvas (Fig. 9)
+    sc = PLOT_CONFIG['SUMMARY_FIG_COLORS']
     with plt.rc_context(RC_PARAMS):
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Use unified model colors
-        model_colors = PLOT_CONFIG['MODEL_COLORS']
-        
-        # Plot curves
-        ax.plot(full_data['s_R'], full_data['max_real_parts'], 
-                'o-', label='Full model (7D subspace)', linewidth=2, markersize=6, 
-                color=model_colors['full'])
-        ax.plot(reduced_data['s_R'], reduced_data['max_real_parts'], 
-                's-', label='Reduced model (2D)', linewidth=2, markersize=6, 
-                color=model_colors['reduced'])
-        
-        # Mark bifurcation thresholds
-        bifurc_colors = PLOT_CONFIG['BIFURCATION_COLORS']
+        fig, ax = plt.subplots(figsize=PLOT_CONFIG["FIGSIZE"]["bifurcation_diagram"])
+
+        ax.plot(
+            full_data['s_R'], full_data['max_real_parts'],
+            'o-', label='Full (7D)', linewidth=1.5, markersize=4.5,
+            color=sc['line_full'],
+        )
+        ax.plot(
+            reduced_data['s_R'], reduced_data['max_real_parts'],
+            's-', label='Reduced (2D)', linewidth=1.5, markersize=4.5,
+            color=sc['line_reduced'],
+        )
+
         if s_R_full:
-            ax.axvline(s_R_full, color=bifurc_colors['full_threshold'], 
-                      linestyle='--', alpha=0.7, linewidth=1.5,
-                      label=f'Full: $s_R^*$ = {s_R_full:.4f}')
+            ax.axvline(
+                s_R_full, color=sc['hopf_full'], linestyle='--', alpha=0.85, linewidth=1.15,
+                label=f'Full $s_R^*$ = {s_R_full:.4f}',
+            )
         if s_R_reduced:
-            ax.axvline(s_R_reduced, color=bifurc_colors['reduced_threshold'], 
-                      linestyle='--', alpha=0.7, linewidth=1.5,
-                      label=f'Reduced: $s_R^*$ = {s_R_reduced:.4f}')
-        
-        # Mark the three test points
+            ax.axvline(
+                s_R_reduced, color=sc['hopf_reduced'], linestyle='--', alpha=0.85, linewidth=1.15,
+                label=f'Reduced $s_R^*$ = {s_R_reduced:.4f}',
+            )
+
         test_points = [
-            (0.03, 'Steady State', bifurc_colors['test_steady']),
-            (0.088, 'Near-threshold', bifurc_colors['test_bistable']),
-            (0.2, 'Oscillatory', bifurc_colors['test_oscillatory']),
+            (0.03, 'Steady', sc['test_low']),
+            (0.088, 'Near-threshold', sc['test_mid']),
+            (0.2, 'Oscillatory', sc['test_high']),
         ]
-        
+
+        neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
+        edge = neutral_colors['gray_dark']
         for s_R_test, label, color in test_points:
-            ax.axvline(s_R_test, color=color, linestyle=':', alpha=0.4, linewidth=1.5)
-            
-            # Find corresponding y-values
             idx_full = np.argmin(np.abs(full_data['s_R'] - s_R_test))
             idx_reduced = np.argmin(np.abs(reduced_data['s_R'] - s_R_test))
-            
             y_full = full_data['max_real_parts'][idx_full]
             y_reduced = reduced_data['max_real_parts'][idx_reduced]
-            
-            # Mark points on curves
-            neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
-            ax.plot(s_R_test, y_full, 'o', color=model_colors['full'], markersize=10,
-                   markeredgecolor=neutral_colors['black'], markeredgewidth=1.5, zorder=5)
-            ax.plot(s_R_test, y_reduced, 's', color=model_colors['reduced'], markersize=10,
-                   markeredgecolor=neutral_colors['black'], markeredgewidth=1.5, zorder=5)
-        
-        # Zero line
-        neutral_colors = PLOT_CONFIG['NEUTRAL_COLORS']
-        ax.axhline(0, color=neutral_colors['black'], linestyle='-', linewidth=1, alpha=0.3)
-        
-        # Shading
-        status_colors = PLOT_CONFIG['STATUS_COLORS']
-        ax.fill_between(s_R_values, -1, 0, alpha=0.1, color=status_colors['valid'])
-        ax.fill_between(s_R_values, 0, 1, alpha=0.1, color=status_colors['invalid'])
-        
-        ax.set_xlabel('$s_R$ (repressor degradation rate)', fontsize=12)
-        ax.set_ylabel(r'max Re($\lambda$) at equilibrium', fontsize=12)
-        # ax.set_title(...)
-        
-        # Simplified legend to avoid overcrowding
-        ax.legend(loc='upper left', fontsize=8, framealpha=0.95, ncol=2)
-        ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
+            ax.plot(s_R_test, y_full, 'o', color=sc['line_full'], markersize=7,
+                    markeredgecolor=edge, markeredgewidth=0.9, zorder=5)
+            ax.plot(s_R_test, y_reduced, 's', color=sc['line_reduced'], markersize=7,
+                    markeredgecolor=edge, markeredgewidth=0.9, zorder=5)
+
+        ax.axhline(0, color=neutral_colors['gray_dark'], linestyle='-', linewidth=0.8, alpha=0.45)
+
+        ax.fill_between(s_R_values, -1, 0, alpha=0.55, color=sc['region_stable'])
+        ax.fill_between(s_R_values, 0, 1, alpha=0.5, color=sc['region_unstable'])
+
+        ax.set_xlabel('$s_R$ (repressor degradation rate)', fontsize=10)
+        ax.set_ylabel(r'max Re($\lambda$) at equilibrium', fontsize=10)
+        ax.legend(loc='upper left', fontsize=7, framealpha=0.92, ncol=2)
+        ax.grid(True, alpha=0.22)
+
+        plt.tight_layout(pad=0.6)
         out_path = f'{figures_dir}/bifurcation_diagram.png'
         plt.savefig(out_path, dpi=dpi, bbox_inches='tight')
         plt.close()
@@ -648,12 +661,6 @@ def run_bifurcation_visualization():
         print(f"Full model Hopf bifurcation:    s_R = {results['s_R_full']:.6f}")
         print(f"Reduced model Hopf bifurcation: s_R = {results['s_R_reduced']:.6f}")
         print(f"Threshold shift:                Δs_R = {shift:+.6f}")
-        print()
-        print(f"At s_R = 0.088:")
-        if results['s_R_full'] < 0.088 < results['s_R_reduced']:
-            print("  ✓ Full model: oscillating (above threshold)")
-            print("  ✗ Reduced model: steady state (below threshold)")
-            print("  → This demonstrates the QSSA breakdown mechanism!")
     
     print("="*80)
 
