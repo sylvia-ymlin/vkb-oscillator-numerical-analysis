@@ -1,14 +1,14 @@
 import os
 import matplotlib.pyplot as plt
 
-from scripts.config import PLOT_CONFIG, RC_PARAMS, BASELINE_CASES
-from scripts.simulate import run_ode_simulation, run_ssa
-from scripts.visualize_baseline import (
+from config import PLOT_CONFIG, RC_PARAMS, BASELINE_CASES
+from simulation import run_ode_simulation, run_ssa
+from plot_baseline import (
     plot_ode_trajectory, plot_ssa_trajectories, plot_ode_vs_ssa,
 )
 
 
-def run_baseline_verification(t_max=400, ode_points=2000, ssa_trajectories=3, seed=42, output_dir="figures"):
+def run_baseline_analysis(t_max=400, ode_points=2000, ssa_trajectories=3, seed=42, output_dir="figures"):
     os.makedirs(output_dir, exist_ok=True)
     with plt.rc_context(RC_PARAMS):
         for idx, c in enumerate(BASELINE_CASES):
@@ -23,4 +23,4 @@ def run_baseline_verification(t_max=400, ode_points=2000, ssa_trajectories=3, se
 
 
 if __name__ == "__main__":
-    run_baseline_verification()
+    run_baseline_analysis()

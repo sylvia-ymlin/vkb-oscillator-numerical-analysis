@@ -1,6 +1,6 @@
 import os
 import matplotlib.pyplot as plt
-from scripts.config import PLOT_CONFIG, RC_PARAMS
+from config import PLOT_CONFIG, RC_PARAMS
 
 
 def plot_step_sizes(step_data, output_dir="figures"):

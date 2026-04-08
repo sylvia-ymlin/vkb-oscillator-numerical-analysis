@@ -4,13 +4,13 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 try:
-from gillespy2 import Model, Species, Reaction, Parameter
+    from gillespy2 import Model, Species, Reaction, Parameter
 except ImportError:
     Model = object
     Species = Reaction = Parameter = None
 
-from scripts.config import DEFAULT_PARAMS, BIOLOGICAL_INITIAL_CONDITION, ODE_TOLERANCES, SPECIES
-from scripts.models import vkb_ode, vkb_jac
+from config import DEFAULT_PARAMS, BIOLOGICAL_INITIAL_CONDITION, ODE_TOLERANCES, SPECIES
+from vkb_model import vkb_ode, vkb_jac
 
 
 def _build_simulation_inputs(s_R, y0, rtol, atol, default_y0):

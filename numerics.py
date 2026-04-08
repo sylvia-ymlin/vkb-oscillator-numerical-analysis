@@ -1,6 +1,6 @@
 import numpy as np
-from scripts.simulate import run_ode_simulation
-from scripts.visualize_numerics import plot_step_sizes, plot_solver_errors
+from simulation import run_ode_simulation
+from plot_numerics import plot_step_sizes, plot_solver_errors
 
 
 def run_step_size_analysis(t_max=48):

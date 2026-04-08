@@ -123,8 +123,8 @@ pip install -r requirements.txt
 
 | Command                  | Purpose                                |
 | ------------------------ | -------------------------------------- |
-| `python main.py all`     | Run the full reported analysis pipeline |
-| `python main.py core`    | Baseline and numerics only             |
+| `python baseline.py`     | Generate the baseline ODE and SSA figures |
+| `python numerics.py`     | Generate the solver comparison figures |
 
 ## References
 
